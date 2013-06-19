@@ -1,0 +1,60 @@
+<?php
+/**
+ *  Implements hook_schema()
+ */
+function newbin_schema() {
+  // Build the database schema for the newbin
+  $schema = array();
+  $schema['newbin'] = array(
+    'description' => t('Base table for the newbin'),
+    'fields' => array(
+      'nbid' => array(
+        'description' => t('Unique identifier for the newbin system'),
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'newbin_slot' => array(
+        'description' => t('Album\'s slot in the newbin manager'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'album_id' => array(
+        'description' => t('The KVRX Album ID for this newbin item'),
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => t(''),
+      ),
+      'date_added' => array(
+        'description' => t('The UNIX timestamp for when this item was added to the newbin'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'date_removed' => array(
+        'description' => t('The UNIX timestamp for when this item was removed from the newbin'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'foreign keys' => array(
+      'field_data_field_album_id' => array(
+        'table' => 'field_data_field_album_id',
+        'columns' => array('album_id' => 'field_data_field_album_id_value'),
+      ),
+    ),
+    'unique keys' => array(
+      'nbid' => array('nbid'),
+    ),
+    'primary key' => array(
+      'nbid',
+    ),
+  );
+  
+  // Return the schema
+  return $schema;
+}

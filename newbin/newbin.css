@@ -1,0 +1,97 @@
+table.newbin-manager tbody td  {
+	vertical-align: middle;
+	height: 60px;
+	padding: 0;
+}
+
+table.newbin-manager thead th:first-child {
+	text-align: center;
+}
+
+table.newbin-manager tbody td.newbin-manager-row-slot {
+	width: 50px;
+	text-align: center;
+	border-right: 1px solid #bebfb9;
+}
+
+table.newbin-manager tbody td.newbin-manager-row-form {
+	padding: 0 12px;
+}
+
+table.newbin-manager tbody td.newbin-manager-row-form.no-album {
+	background: rgba(255, 0, 0, 0.1);
+}
+
+table.newbin-manager input.form-submit {
+	margin: 0;
+}
+
+table.newbin-manager tbody td form div.form-type-textfield input {
+	font-size: 13px;
+	padding: 4px 8px;
+	margin-right: 18px;
+	width: 100%;
+}
+
+table.newbin-manager tbody td form input[type="submit"] {
+	height: 30px;
+	width: 180px;
+	
+}
+
+table.newbin-manager tbody td form div.form-type-textfield,
+table.newbin-manager tbody td div.album-details {
+	width: 600px;
+	float: left;
+	margin-right: 36px;
+}
+
+table.newbin-manager tbody td div.album-details div.album-date {
+	width: 134px;
+	float: right;
+	font-size: 10px;
+	line-height: 12px;
+	padding: 8px;
+}
+
+.album-date.stale-date {
+	background: rgba(255, 0, 0, 0.1);
+	color: #f00;
+	padding: 8px;
+}
+
+span.album-date.stale-date {
+	padding: 2px 6px;
+}
+
+div.stale-notice {
+	margin-bottom: 4px;
+	font-size: 9pt;
+}
+
+table.newbin-manager tbody td div.album-details div.album-date:before {
+	content: 'Added on:';
+	display: block;
+	font-weight: bold;
+}
+
+table.newbin-manager tbody td div.album-details div.album-title,
+table.newbin-manager tbody td div.album-details div.album-id {
+	width: 450px;
+}
+
+table.newbin-manager tbody td div.album-details div.album-title {
+	font-weight: bold;
+}
+
+table.newbin-manager tbody td div.album-details div.album-id {
+	font-size: 7pt;
+}
+
+table.newbin-manager tbody td form div.form-type-textfield input.form-autocomplete {
+	background-position: 100% 6px;
+}
+
+table.newbin-manager tbody td form div.form-type-textfield input.form-autocomplete.throbbing {
+	background-position: 100% -14px;
+}

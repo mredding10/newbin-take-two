@@ -1,0 +1,534 @@
+<?php
+/**
+ *  Implements hook_help()
+ */
+function newbin_help($path, $arg) {
+  switch($path) {
+    case 'admin/help#newbin':
+      return '<p>' . t('Provides general functionality for the KVRX Newbin and Topless 39') . '</p>';
+      break;
+  }
+}
+
+
+
+/**
+ *  Implements hook_permission()
+ */
+function newbin_permission() {
+  return array(
+    'administer newbin' => array(
+      'title' => t('Administer Newbin System'),
+      'description' => t('This permission allows users to access the newbin management system'),
+    ),
+  );
+}
+
+
+
+/**
+ *  Implements hook_menu()
+ */
+function newbin_menu() {
+  $items = array();
+  
+  // Default menu: the newbin page
+  $items['admin/kvrx/newbin'] = array(
+    'title' => t('Newbin'),
+    'description' => t('KVRX Newbin'),
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('administer newbin'),
+    'page callback' => 'newbin_manager_page',
+  );
+  
+  // Home tab: Newbin manager
+  $items['admin/kvrx/newbin/manager'] = array(
+    'title' => t('Newbin Manager'),
+    'description' => t('KVRX Newbin Manager'),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'access arguments' => array('administer newbin'),
+    'page callback' => 'newbin_manager_page',
+  );
+  
+  // Tab: Reports
+  $items['admin/kvrx/newbin/reports'] = array(
+    'title' => t('Newbin Reports'),
+    'description' => t('KVRX Newbin Reporting'),
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer newbin'),
+    'page callback' => 'newbin_reports_page',
+  );
+  
+  // Tab: Configuration
+  $items['admin/kvrx/newbin/settings'] = array(
+    'title' => t('Newbin Settings'),
+    'description' => t('KVRX Newbin Configuration Options'),
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer newbin'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('newbin_settings_form'),
+  );
+  
+  // Autocomplete for album title
+  $items['admin/kvrx/newbin/autocomplete'] = array(
+    'title' => t('Newbin Autocomplete'),
+    'type' => MENU_CALLBACK,
+    'page callback' => 'newbin_album_autocomplete',
+    'access arguments' => array('administer newbin'),
+  );
+
+  return $items;
+}
+
+
+/**
+ *  Implements a page that adds to the forms
+ */
+function newbin_manager_page() {
+  // Grab the number of items to put in the newbin
+  $newbin_length = variable_get('newbin_length', 30);
+  $stale = str_replace('-', '', variable_get('newbin_stale_item', '-1 week'));
+  
+  // Build the header
+  $header = array(
+    'row-slot' => t('#'),
+    'row-form' => t('Album'),
+  );
+  
+  // Build the rows
+  $rows = array();
+  for($i = 1; $i <= $newbin_length; $i++) {
+    $rows[$i] = array(
+      'data' => _newbin_manager_rows($i),
+      'class' => array('newbin-manager-row'),
+      'id' => ('newbin-manager-row-' . $i),
+    );
+  }
+  
+  // Start building the page
+  $page = array();
+  $page['alert'] = array(
+    '#type' => 'markup',
+    '#markup' => 'Items marked with <span class="album-date stale-date">red dates</span> have been in the Newbin longer than ' . $stale . '.',
+    '#prefix' => '<div class="stale-notice">',
+    '#suffix' => '</div>',
+  );
+  
+  // Get the table built
+  $page['table'] = array(
+    '#theme' => 'table',
+    '#attributes' => array(
+      'class' => array('newbin-manager'),
+    ),
+    '#header' => $header,
+    '#rows' => $rows,
+  );
+  
+  // Tell where configuration options are
+  $page['options'] = array(
+    '#type' => 'markup',
+    '#markup' => t('Need to add more slots to the Newbin? Adjust options on the ') . l(t('settings page'), 'admin/kvrx/newbin/settings') . t('.'),
+  );
+
+  // Return the form
+  return $page;
+}
+
+
+// Helper function for generating the newbin album items table
+function _newbin_manager_rows($item) {
+  $num = $item;
+  
+  // Output array
+  $output = array();
+  
+  // See if we're a multiple of 20 to add a new anchor
+  if($item % 20 == 0) { $item = '<a name="item-' . $item . '">' . $item . '</a>'; }
+  $output['row-slot'] = array(
+    'data' => $item,
+    'class' => 'newbin-manager-row-slot'
+  );
+  
+  // Do we create an entry or a form?
+  $id = _newbin_find_item($item);
+  if($id) {
+    // Build up the information for this row, using the album ID
+    $output['row-form'] = array(
+      'data' => drupal_render(drupal_get_form('newbin_manager_remove', $item)),
+      'class' => array('newbin-manager-row-form'),
+      'id' => 'newbin-manager-row-remove-form-' . $num
+    );
+  } else {
+    // We need to create a form for this row
+    $output['row-form'] = array(
+      'data' => drupal_render(drupal_get_form('newbin_manager_add', $item)),
+      'class' => array('newbin-manager-row-form'),
+      'id' => 'newbin-manager-row-add-form-' . $num,
+    );
+  }
+  
+  // Send back the array
+  return $output;
+}
+
+
+// Helper function to find when the item was added to the newbin
+function _newbin_date_added($item) {
+  // Look in the table
+  $result = db_select('newbin', 'nb')
+        ->fields('nb')
+        ->condition('nb.newbin_slot', $item, '=')
+        ->condition('nb.date_removed', 0, '=')
+        ->execute()
+        ->fetchAssoc();
+  
+  // Return the date
+  return $result['date_added'];
+}
+
+// Helper function to find if we have a newbin item or not
+function _newbin_find_item($item) {
+  // Look in the table
+  $result = db_select('newbin', 'nb')
+        ->fields('nb')
+        ->condition('nb.newbin_slot', $item, '=')
+        ->condition('nb.date_removed', 0, '=')
+        ->execute()
+        ->fetchAssoc();
+  
+  // if the result is empty, return false
+  if( !count($result) ) return FALSE;
+  
+  // If the result has something, return the album id
+  return $result['album_id'];
+}
+
+
+// Helper function to build the newbin add item form
+function newbin_manager_add($form, &$form_state, $item) {
+  // Build the text field for the render
+  $form['newbin_add_slot'] = array(
+    '#type' => 'textfield',
+    '#size' => 32,
+    '#autocomplete_path' => 'admin/kvrx/newbin/autocomplete',
+  );
+  
+  $form['newbin_slot'] = array(
+    '#type' => 'hidden',
+    '#value' => $item,
+  );
+  
+  // Build the add button
+  $form['newbin_add_slot_submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Add to Newbin'),
+    '#ajax' => array(
+      'callback' => 'newbin_add_item',
+      'wrapper' => 'newbin-manager-row-add-form-' . $item,
+      'method' => 'replace',
+      'effect' => 'none',
+    ),
+  );
+  
+  return $form;
+}
+
+function newbin_manager_add_validate($form, &$form_state) {
+  // Is there an album by that title?
+  if( !(_newbin_album_title($form_state['values']['newbin_add_slot']))) {
+    form_set_error('newbin_add_slot', t('No album with that Album ID'));
+  }
+}
+
+// Helper function to return an album title by album ID
+function _newbin_album_title($album_id) {
+  $name_query  = new EntityFieldQuery;
+  $name_result = $name_query->entityCondition('entity_type', 'node')
+                ->entityCondition('bundle', 'album')
+                ->propertyCondition('status', 1)      // Only published albums
+                ->fieldCondition('field_album_id', 'value', $album_id, 'LIKE')
+                ->execute();
+  
+  // If there's a title found, return it
+  if(isset($name_result['node'])) {
+    $title = array_keys($name_result['node']);
+    $title = node_load($title[0])->title;
+    return t($title);
+  } else {
+    // No title found? Return false
+    return FALSE;
+  }
+}
+
+// Helper function to build the newbin remove item form
+function newbin_manager_remove($form, &$form_state, $item) {
+  // Build the text field for the render
+  $stale = _newbin_stale_date(_newbin_date_added($item)) ? ' stale-date' : '';
+  $form['newbin_remove_slot'] = array(
+    '#type' => 'markup',
+    '#markup' => 
+      '<div class="album-details">' . 
+        '<div class="album-date' . $stale . '">' . date('M d, Y', _newbin_date_added($item)) . '</div>' . 
+        '<div class="album-title">' . _newbin_album_title(_newbin_find_item($item)) . '</div>' . 
+        '<div class="album-id">' . _newbin_find_item($item) . '</div>' .
+      '</div>',
+  );
+  
+  $form['newbin_slot'] = array(
+    '#type' => 'hidden',
+    '#value' => $item,
+  );
+  
+  $form['newbin_album_id'] = array(
+    '#type' => 'hidden',
+    '#value' => _newbin_find_item($item),
+  );
+  
+  // Build the add button
+  $form['newbin_remove_slot_submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Remove from Newbin'),
+    '#ajax' => array(
+      'callback' => 'newbin_remove_item',
+      'wrapper' => 'newbin-manager-row-remove-form-' . $item,
+      'method' => 'replace',
+      'effect' => 'none',
+    ),
+  );
+  
+  return $form;
+}
+
+// Helper function to add an item to the database
+function newbin_add_item($form, &$form_state) {
+  // Grab the variables
+  $album_id = $form_state['values']['newbin_add_slot'];
+  $slot = $form_state['values']['newbin_slot'];
+  $now = time();
+  
+  // Make sure the album_id is a real album id
+  if(_newbin_album_title($album_id)) {  
+    // Create the insert query and execute it
+    $nbid = db_insert('newbin')
+          ->fields(array(
+            'newbin_slot' => $slot,
+            'album_id' => $album_id,
+            'date_added' => $now,
+          ))
+          ->execute();
+  
+    // Build a render array for the replacement
+    return '<td class="newbin-manager-row-form" id="newbin-manager-row-remove-form-' . $slot . '">' . 
+      drupal_render(drupal_get_form('newbin_manager_remove', $slot)) . 
+      '</td>';
+  } else {
+    // Alert the user that there's an error
+    return '<td class="newbin-manager-row-form no-album" id="newbin-manager-row-add-form-' . $slot . '">' . 
+      drupal_render(drupal_get_form('newbin_manager_add', $slot)) . 
+      '</td>';
+  }
+}
+
+// Helper function to remove an item from the database
+function newbin_remove_item($form, &$form_state) {
+  // Grab the variables
+  $album_id = $form_state['values']['newbin_album_id'];
+  $slot = $form_state['values']['newbin_slot'];
+  
+  // Create the update query and execute it
+  $nbid = db_update('newbin')
+        ->fields(array(
+          'date_removed' => time(),
+        ))
+        ->condition('album_id', $album_id, '=')
+        ->condition('newbin_slot', $slot, '=')
+        ->condition('date_removed', 0, '=')
+        ->execute();
+  
+  // Build a render array for the replacement
+  return '<td class="newbin-manager-row-form" id="newbin-manager-row-add-form-' . $slot . '">' . 
+    drupal_render(drupal_get_form('newbin_manager_add', $slot)) . 
+    '</td>';
+}
+
+
+// Helper function to check a stale date
+function _newbin_stale_date($timestamp) {
+  $check = variable_get('newbin_stale_item', '-1 week');
+  return ($timestamp < strtotime($check));
+}
+
+
+/**
+ *  Provides reporting page
+ */
+function newbin_reports_page() {
+  return array();
+}
+
+
+/**
+ *  Implements drupal_get_form
+ */
+function newbin_settings_form($form, &$form_state) {
+  // Reporting date
+  $form['newbin_reporting_date'] = array(
+    '#type' => 'select',
+    '#title' => t('Newbin Reporting Day'),
+    '#description' => t('Select the date to generate the weekly newbin report'),
+    '#options' => array(
+      t('Sunday'),
+      t('Monday'),
+      t('Tuesday'),
+      t('Wednesday'),
+      t('Thursday'),
+      t('Friday'),
+      t('Saturday'),
+    ),
+    '#default_value' => variable_get('newbin_reporting_date', 0),
+  );
+  
+  // Newbin elements
+  $length = variable_get('newbin_length', 30);
+  $form['newbin_length'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Newbin Slots'),
+    '#description' => t('Number of elements in the newbin. ') . 
+      '<strong>' . t('NOTE: Lowering this value will remove all albums in slots higher than ' . $length . '. Use caution.') . '</strong>',
+    '#default_value' => variable_get('newbin_length', 30),
+    '#size' => 4,
+  );
+  
+  // How long is too long?
+  $form['newbin_stale_item'] = array(
+    '#type' => 'select',
+    '#title' => t('Stale Items'),
+    '#description' => t('Select when to flag items as too stale to stay in the Newbin'),
+    '#options' => array(
+      '-1 week' => t('1 week'),
+      '-2 weeks' => t('2 weeks'),
+      '-3 weeks' => t('3 weeks'),
+      '-1 month' => t('1 month'),
+      '-2 months' => t('2 months'),
+    ),
+    '#default_value' => variable_get('newbin_stale_item', '-1 week'),
+  );
+  
+  // Submit button
+  $form['newbin_settings_submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save Settings'),
+  );
+  
+  return $form;
+}
+
+
+/** 
+ *  Implements hook_form_validate
+ */
+function newbin_settings_form_validate($form, &$form_state) {
+  // Make sure the newbin length is numeric
+  if(!is_numeric($form_state['values']['newbin_length'])) {
+    form_set_error('newbin_length', t('Length must be a number.'));
+  }
+}
+
+
+/**
+ *  Implements hook_form_submit
+ */
+function newbin_settings_form_submit($form, &$form_state) {
+  // Save the date
+  variable_set('newbin_reporting_date', $form_state['values']['newbin_reporting_date']);
+  
+  // Save the length
+  $old_length = variable_get('newbin_length', 30);
+  variable_set('newbin_length', $form_state['values']['newbin_length']);
+  
+  // If the old length is bigger than the new length, delete out the old newbin items
+  if($old_length > $form_state['values']['newbin_length']) {
+    // Perform deletion of older newbin items here
+    $nbid = db_update('newbin')
+      ->fields(array(
+        'date_removed' => time(),
+      ))
+      ->condition('newbin_slot', $form_state['values']['newbin_length'], '>')
+      ->condition('date_removed', 0, '=')
+      ->execute();
+  }
+  
+  // Save the stale item
+  variable_set('newbin_stale_item', $form_state['values']['newbin_stale_item']);
+  
+  // Alert the user that the options have been saved
+  drupal_set_message(t('Newbin configuration options have been saved.'));
+}
+
+
+/**
+ *  Helper function to look up the album title
+ */
+function newbin_album_autocomplete($string) {
+  // Build the array for matches
+  $matches = array();
+  
+  // Look up the matches on album names
+  $name_query  = new EntityFieldQuery;
+  $name_result = $name_query->entityCondition('entity_type', 'node')
+                ->entityCondition('bundle', 'album')
+                ->propertyCondition('status', 1)      // Only published albums
+                ->propertyCondition('title', '%' . $string . '%', 'LIKE')
+                ->execute();
+  
+  if(isset($name_result['node'])) {
+    $nids = array_keys($name_result['node']);
+    $items = entity_load('node', $nids);
+    
+    foreach($items as $item) {
+      $id = field_get_items('node', $item, 'field_album_id');
+      $id = trim(strtoupper(drupal_render(field_view_value('node', $item, 'field_album_id', $id[0]))));
+      $matches[$id] = ($id <> '') ? $item->title . ' [' . $id . ']' : $item->title;
+    }
+  }
+  
+  
+  // Look up the matches on album IDs
+  $name_query  = new EntityFieldQuery;
+  $name_result = $name_query->entityCondition('entity_type', 'node')
+                ->entityCondition('bundle', 'album')
+                ->propertyCondition('status', 1)      // Only published albums
+                ->fieldCondition('field_album_id', 'value', '%' . $string . '%', 'LIKE')
+                ->execute();
+  
+  if(isset($name_result['node'])) {
+    $nids = array_keys($name_result['node']);
+    $items = entity_load('node', $nids);
+    
+    foreach($items as $item) {
+      $id = field_get_items('node', $item, 'field_album_id');
+      $id = trim(strtoupper(drupal_render(field_view_value('node', $item, 'field_album_id', $id[0]))));
+      $new_match = ($id <> '') ? $item->title . ' [' . $id . ']' : $item->title;
+      
+      // Only add to the matches if it's not already a match
+      if( !in_array($new_match, $matches) ) $matches[$id] = $new_match;
+    }
+  }
+  
+  // Build a list of things already in the newbin
+  $newbin = db_select('newbin', 'nb')
+        ->fields('nb')
+        ->condition('date_removed', 0, '=')
+        ->execute();
+        
+  // Strip out items already in the newbin
+  while($record = $newbin->fetchAssoc()) {
+    if(isset($matches[$record['album_id']])) unset($matches[$record['album_id']]);
+  }
+  
+  // Sort the array alphabetically
+  asort($matches);
+  
+  // Build the return
+  drupal_json_output($matches);
+}

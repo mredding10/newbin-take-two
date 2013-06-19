@@ -1,0 +1,7 @@
+; Custom module by Michael Redding for TSM/KVRX
+name                  = Newbin Manager
+description           = Provides general functionality for the newbin and topless 39
+core                  = 7.x
+package               = KVRX
+
+stylesheets[all][]    = newbin.css
